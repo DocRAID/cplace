@@ -16,12 +16,15 @@ wgpu = "27.0.1"
 pollster = "0.4.0"
 egui-wgpu = { version = "0.33.3", features = ["winit", "wayland"] }
 egui = { version = "0.33.3" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 egui-winit = "0.33.3"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 console_error_panic_hook = "0.1.6"
 console_log = "1.0"
 wgpu = { version = "27.0.1", features = ["webgl"]}
+egui-winit = { version = "0.33.3", default-features = false, features = ["links"] }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4.30"
 web-sys = { version = "0.3", features = [

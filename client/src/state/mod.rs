@@ -1,7 +1,8 @@
 use std::sync::Arc;
 use egui::{Context, FullOutput, TopBottomPanel};
 use egui_wgpu::{Renderer, RendererOptions, ScreenDescriptor};
-use log::warn;
+use egui_winit::apply_viewport_builder_to_window;
+use log::{info, warn};
 use wgpu::{Backends, ExperimentalFeatures, Features, Instance, InstanceDescriptor, MemoryHints, SurfaceError, Trace};
 use winit::window::Window;
 
@@ -202,18 +203,16 @@ impl State {
                     textures_delta,
                     shapes,
                     pixels_per_point,
-                    viewport_output
+                    .. // viewport is ignored
                 } = output;
-
-                for _ in viewport_output {
-                    warn!("Viewport change is not handled!")
-                }
 
                 self.egui_state.handle_platform_output(self.window.as_ref(), platform_output);
 
                 for (id, delta) in textures_delta.set {
+                    info!("delta id: {:?}", id);
                     self.ui_renderer.update_texture(&self.device, &self.queue, id, &delta);
                 }
+                self.egui_ctx.fonts(|v| {});
                 let descriptor = ScreenDescriptor {
                     size_in_pixels: [self.config.width, self.config.height],
                     pixels_per_point,
@@ -225,7 +224,8 @@ impl State {
                 self.ui_renderer.render(&mut render_pass, &primitives, &descriptor);
 
                 for id in textures_delta.free {
-                    self.ui_renderer.free_texture(&id)
+                    self.ui_renderer.free_texture(&id);
+                    info!("free: {:?}", id);
                 }
             }
         }
