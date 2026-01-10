@@ -1,2 +1,2 @@
 wasm-pack build client --target web
-python3 -m http.server --directory client
+python3 -m http.server --directory client 4885

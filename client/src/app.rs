@@ -110,12 +110,10 @@ impl ApplicationHandler<State> for App {
                         ..
                     },
                 ..
-            } => {
-                match key_code {
-                    KeyCode::Escape => event_loop.exit(),
-                    _ => {}
-                }
-            }
+            } => match key_code {
+                KeyCode::Escape => event_loop.exit(),
+                _ => {}
+            },
             _ => {}
         }
     }
