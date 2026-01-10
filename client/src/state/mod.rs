@@ -1,9 +1,10 @@
 use std::sync::Arc;
-use wgpu::{Backends, Instance, InstanceDescriptor};
+use wgpu::{Backends, ExperimentalFeatures, Features, Instance, InstanceDescriptor, MemoryHints, SurfaceError, Trace};
 use winit::window::Window;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
+use winit::dpi::PhysicalSize;
 
 // This will store the state of our game
 pub struct State {
@@ -13,6 +14,7 @@ pub struct State {
     pub queue: wgpu::Queue,
     pub config: wgpu::SurfaceConfiguration,
     pub is_surface_configured: bool,
+    resize_request: Option<PhysicalSize<u32>>,
 }
 
 impl State {
@@ -36,7 +38,16 @@ impl State {
 
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
-                ..Default::default()
+                label: Some("Main Device"),
+                required_features: Features::empty(),
+                required_limits: if cfg!(target_arch = "wasm32") {
+                    wgpu::Limits::downlevel_webgl2_defaults()
+                } else {
+                    wgpu::Limits::default()
+                },
+                experimental_features: ExperimentalFeatures::disabled(),
+                memory_hints: MemoryHints::Performance,
+                trace: Trace::Off
             })
             .await?;
 
@@ -67,68 +78,81 @@ impl State {
             queue,
             config,
             is_surface_configured: false,
+            resize_request: None,
         })
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
         if width > 0 && height > 0 {
-            self.config.width = width;
-            self.config.height = height;
-            self.surface.configure(&self.device, &self.config);
-            self.is_surface_configured = true;
+            if !self.is_surface_configured {
+                self.apply_size(width, height);
+                self.is_surface_configured = true;
+            } else {
+                self.resize_request = Some(PhysicalSize::new(width, height));
+            }
         }
     }
 
-    pub fn render(&mut self) {
+    fn apply_size(&mut self, width: u32, height: u32) {
+        self.config.width = width;
+        self.config.height = height;
+        self.surface.configure(&self.device, &self.config);
+    }
+
+    pub fn render(&mut self) -> Result<(), SurfaceError> {
         self.window.request_redraw();
 
-        if self.is_surface_configured {
-            let frame = match self.surface.get_current_texture() {
-                Ok(frame) => frame,
-                Err(_) => {
-                    self.surface.configure(&self.device, &self.config);
-                    self.surface
-                        .get_current_texture()
-                        .expect("Failed to acquire next swap chain texture!")
-                }
-            };
-
-            let view = frame
-                .texture
-                .create_view(&wgpu::TextureViewDescriptor::default());
-
-            let mut encoder = self
-                .device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-
-            {
-                let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: None,
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &view,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color {
-                                r: 0.65,
-                                g: 0.98,
-                                b: 1.0,
-                                a: 1.0,
-                            }),
-                            store: wgpu::StoreOp::Store,
-                        },
-                        depth_slice: None,
-                    })],
-                    depth_stencil_attachment: None,
-                    occlusion_query_set: None,
-                    timestamp_writes: None,
-                    multiview_mask: None,
-                });
-            }
-
-            self.queue.submit(std::iter::once(encoder.finish()));
-            frame.present();
+        if !self.is_surface_configured {
+            return Ok(());
         }
 
-        // We'll do more stuff here in the next tutorial
+        if let Some(PhysicalSize { width, height }) = self.resize_request.take() {
+            self.apply_size(width, height)
+        }
+
+        let frame = match self.surface.get_current_texture() {
+            Ok(frame) => frame,
+            Err(_) => {
+                self.surface.configure(&self.device, &self.config);
+                self.surface.get_current_texture()?
+            }
+        };
+
+        let view = frame
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+        {
+            let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.65,
+                            g: 0.98,
+                            b: 1.0,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+                multiview_mask: None,
+            });
+        }
+
+        self.queue.submit(std::iter::once(encoder.finish()));
+        frame.present();
+
+        Ok(())
     }
 }

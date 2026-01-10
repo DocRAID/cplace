@@ -1,5 +1,6 @@
 use crate::state::State;
 use std::sync::Arc;
+use log::error;
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
@@ -73,7 +74,7 @@ impl ApplicationHandler<State> for App {
         }
     }
 
-    fn user_event(&mut self, event_loop: &ActiveEventLoop, mut state: State) {
+    fn user_event(&mut self, _event_loop: &ActiveEventLoop, mut state: State) {
         #[cfg(target_arch = "wasm32")]
         {
             state.window.request_redraw();
@@ -88,7 +89,7 @@ impl ApplicationHandler<State> for App {
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
-        window_id: WindowId,
+        _: WindowId,
         event: WindowEvent,
     ) {
         let state = match &mut self.state {
@@ -101,7 +102,17 @@ impl ApplicationHandler<State> for App {
             WindowEvent::Resized(PhysicalSize { width, height }) => {
                 state.resize(width, height);
             }
-            WindowEvent::RedrawRequested => state.render(),
+            WindowEvent::RedrawRequested => {
+                match state.render() {
+                    Ok(_) => {}
+                    Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
+                        state.resize(state.config.width, state.config.height)
+                    }
+                    Err(e) => {
+                        error!("render: {:?}", e);
+                    }
+                }
+            },
             WindowEvent::KeyboardInput {
                 event:
                     KeyEvent {
