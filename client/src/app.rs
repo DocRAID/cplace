@@ -4,6 +4,7 @@ use log::error;
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
+#[allow(unused_imports)]
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
@@ -31,6 +32,7 @@ impl App {
 
 impl ApplicationHandler<State> for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        #[allow(unused_mut)]
         let mut window_attributes = Window::default_attributes();
 
         #[cfg(target_arch = "wasm32")]
@@ -74,6 +76,7 @@ impl ApplicationHandler<State> for App {
         }
     }
 
+    #[allow(unused_mut)]
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, mut state: State) {
         #[cfg(target_arch = "wasm32")]
         {
@@ -97,12 +100,16 @@ impl ApplicationHandler<State> for App {
             None => return,
         };
 
+        if state.handle_input(&event) {
+            return;
+        }
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(PhysicalSize { width, height }) => {
                 state.resize(width, height);
             }
             WindowEvent::RedrawRequested => {
+                state.update();
                 match state.render() {
                     Ok(_) => {}
                     Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
