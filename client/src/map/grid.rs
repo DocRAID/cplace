@@ -2,6 +2,7 @@
 
 use bytemuck::{Pod, Zeroable};
 use std::collections::HashMap;
+use wgpu::include_wgsl;
 use wgpu::util::DeviceExt;
 
 /// Grid vertex for colored quads
@@ -77,10 +78,7 @@ impl PixelGrid {
     /// Create a new pixel grid
     /// cell_size: size of each pixel in degrees (e.g., 0.0001 for ~10m at equator)
     pub fn new(device: &wgpu::Device, texture_format: wgpu::TextureFormat, cell_size: f64) -> Self {
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Grid Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("../shader/grid.wgsl").into()),
-        });
+        let shader = device.create_shader_module(include_wgsl!("../shader/grid.wgsl"));
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Grid Pipeline Layout"),

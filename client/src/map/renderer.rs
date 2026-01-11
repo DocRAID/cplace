@@ -1,12 +1,10 @@
 //! wgpu tile renderer with texture management
 
-use std::sync::Arc;
-
 use bytemuck::{Pod, Zeroable};
+use wgpu::include_wgsl;
 use wgpu::util::DeviceExt;
 
 use super::cache::{CachedTile, TileCache};
-use super::camera::MapCamera;
 use super::tile::TileId;
 
 /// Vertex for tile rendering
@@ -47,10 +45,7 @@ impl TileRenderer {
     /// Create a new tile renderer
     pub fn new(device: &wgpu::Device, texture_format: wgpu::TextureFormat) -> Self {
         // Load shader
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Tile Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("../shader/tile.wgsl").into()),
-        });
+        let shader = device.create_shader_module(include_wgsl!("../shader/tile.wgsl"));
 
         // Bind group layout for texture + sampler
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {

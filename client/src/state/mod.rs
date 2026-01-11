@@ -309,7 +309,7 @@ impl State {
                 &descriptor,
             );
 
-            let render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
@@ -330,6 +330,7 @@ impl State {
                 timestamp_writes: None,
             });
 
+            self.map_system.render(&mut render_pass, &self.device);
             let mut render_pass = render_pass.forget_lifetime();
             if self.draw_egui {
                 self.ui_renderer

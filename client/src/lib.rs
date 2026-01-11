@@ -1,7 +1,3 @@
-// crate::add
-// crate::state
-// crate::state::greet
-
 use log::info;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
