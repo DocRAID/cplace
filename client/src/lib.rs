@@ -10,6 +10,7 @@ use crate::app::App;
 
 mod state;
 mod app;
+mod map;
 
 pub fn run() -> anyhow::Result<()> {
     #[cfg(not(target_arch = "wasm32"))]

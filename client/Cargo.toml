@@ -16,9 +16,13 @@ wgpu = "27.0.1"
 pollster = "0.4.0"
 egui-wgpu = { version = "0.33.3", features = ["winit", "wayland"] }
 egui = { version = "0.33.3" }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+bytemuck = { version = "1.14", features = ["derive"] }
+web-time = "1.1"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 egui-winit = "0.33.3"
+reqwest = { version = "0.12", features = ["blocking"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 console_error_panic_hook = "0.1.6"
@@ -27,8 +31,14 @@ wgpu = { version = "27.0.1", features = ["webgl"]}
 egui-winit = { version = "0.33.3", default-features = false, features = ["links"] }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4.30"
+js-sys = "0.3"
 web-sys = { version = "0.3", features = [
     "Document",
     "Window",
     "Element",
+    "Request",
+    "RequestInit",
+    "RequestMode",
+    "Response",
+    "Headers",
 ]}

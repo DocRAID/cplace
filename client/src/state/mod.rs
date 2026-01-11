@@ -1,15 +1,20 @@
+use std::sync::Arc;
+
 use egui::{Context, FullOutput, TopBottomPanel};
 use egui_wgpu::{Renderer, RendererOptions, ScreenDescriptor};
-use log::{info, warn};
-use std::sync::Arc;
-use wgpu::{Backends, ExperimentalFeatures, Features, Instance, InstanceDescriptor, MemoryHints, SurfaceError, TextureFormat, Trace};
+use wgpu::{
+    Backends, ExperimentalFeatures, Features, Instance, InstanceDescriptor, MemoryHints,
+    SurfaceError, TextureFormat, Trace,
+};
 use winit::window::Window;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
 use winit::dpi::PhysicalSize;
-use winit::event::WindowEvent;
+use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
+
+use crate::map::MapSystem;
 
 // This will store the state of our game
 pub struct State {
@@ -24,6 +29,14 @@ pub struct State {
     pub egui_ctx: Context,
     egui_state: egui_winit::State,
     draw_egui: bool,
+
+    // Map system
+    map_system: MapSystem,
+
+    // Mouse state for panning
+    mouse_pressed: bool,
+    last_mouse_pos: Option<(f32, f32)>,
+    current_mouse_pos: (f32, f32),
 }
 
 impl State {
@@ -65,7 +78,9 @@ impl State {
         let texture_format = cap
             .formats
             .iter()
-            .find(|format| **format == TextureFormat::Rgba8Unorm || **format == TextureFormat::Bgra8Unorm)
+            .find(|format| {
+                **format == TextureFormat::Rgba8Unorm || **format == TextureFormat::Bgra8Unorm
+            })
             .copied()
             .unwrap_or(cap.formats[0]);
 
@@ -101,6 +116,14 @@ impl State {
             None,
         );
 
+        // Create map system
+        let map_system = MapSystem::new(
+            &device,
+            texture_format,
+            window.inner_size().width,
+            window.inner_size().height,
+        );
+
         Ok(Self {
             window,
             surface,
@@ -113,6 +136,10 @@ impl State {
             egui_ctx,
             egui_state,
             draw_egui: true,
+            map_system,
+            mouse_pressed: false,
+            last_mouse_pos: None,
+            current_mouse_pos: (0.0, 0.0),
         })
     }
 
@@ -124,6 +151,7 @@ impl State {
             } else {
                 self.resize_request = Some(PhysicalSize::new(width, height));
             }
+            self.map_system.resize(width, height);
         }
     }
 
@@ -131,6 +159,7 @@ impl State {
         self.config.width = width;
         self.config.height = height;
         self.surface.configure(&self.device, &self.config);
+        self.map_system.resize(width, height);
     }
 
     pub fn handle_input(&mut self, event: &WindowEvent) -> bool {
@@ -138,11 +167,81 @@ impl State {
             .egui_state
             .on_window_event(self.window.as_ref(), &event);
         self.draw_egui = response.repaint;
+
+        // If egui consumed it, don't process map input
+        if response.consumed {
+            return true;
+        }
+
+        // Handle map-specific input
+        match event {
+            WindowEvent::MouseInput { state, button, .. } => {
+                if *button == MouseButton::Left {
+                    self.mouse_pressed = *state == ElementState::Pressed;
+                    if !self.mouse_pressed {
+                        self.last_mouse_pos = None;
+                    }
+                }
+            }
+            WindowEvent::CursorMoved { position, .. } => {
+                let (x, y) = (position.x as f32, position.y as f32);
+                self.current_mouse_pos = (x, y);
+
+                if self.mouse_pressed {
+                    if let Some((last_x, last_y)) = self.last_mouse_pos {
+                        let dx = x - last_x;
+                        let dy = y - last_y;
+                        self.map_system.pan(dx, dy);
+                    }
+                    self.last_mouse_pos = Some((x, y));
+                }
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                let zoom_delta = match delta {
+                    MouseScrollDelta::LineDelta(_, y) => *y as f64 * 0.5,
+                    MouseScrollDelta::PixelDelta(pos) => pos.y as f64 * 0.01,
+                };
+                let (mx, my) = self.current_mouse_pos;
+                self.map_system.zoom_at(zoom_delta, mx, my);
+            }
+            _ => {}
+        }
+
         response.consumed
     }
 
     pub fn update(&mut self) {
+        // Update map system
+        self.map_system.update(&self.device, &self.queue);
 
+        // Update egui
+        let map_center = self.map_system.center();
+        let map_zoom = self.map_system.zoom_level();
+        let cache_stats = self.map_system.cache_stats();
+        let pending = self.map_system.pending_tiles();
+
+        let input = self.egui_state.take_egui_input(self.window.as_ref());
+        let output = self.egui_ctx.run(input, |ctx| {
+            TopBottomPanel::top("menu").show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(format!(
+                        "Zoom: {:.1} | Center: ({:.4}, {:.4})",
+                        map_zoom, map_center.0, map_center.1
+                    ));
+                    ui.separator();
+                    ui.label(format!(
+                        "Cache: {}/{} ({:.0}%)",
+                        cache_stats.tile_count,
+                        cache_stats.max_tiles,
+                        cache_stats.tile_usage_percent()
+                    ));
+                    if pending > 0 {
+                        ui.separator();
+                        ui.label(format!("Loading: {}", pending));
+                    }
+                });
+            });
+        });
     }
 
     fn draw_egui(&mut self) -> FullOutput {
@@ -187,6 +286,7 @@ impl State {
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
+        // Render map tiles first
         {
             let output = self.draw_egui();
             let FullOutput {
@@ -224,9 +324,9 @@ impl State {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.65,
-                            g: 0.98,
-                            b: 1.0,
+                            r: 0.8,
+                            g: 0.85,
+                            b: 0.9,
                             a: 1.0,
                         }),
                         store: wgpu::StoreOp::Store,
