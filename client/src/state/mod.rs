@@ -151,7 +151,6 @@ impl State {
             } else {
                 self.resize_request = Some(PhysicalSize::new(width, height));
             }
-            self.map_system.resize(width, height);
         }
     }
 
@@ -213,35 +212,6 @@ impl State {
     pub fn update(&mut self) {
         // Update map system
         self.map_system.update(&self.device, &self.queue);
-
-        // Update egui
-        let map_center = self.map_system.center();
-        let map_zoom = self.map_system.zoom_level();
-        let cache_stats = self.map_system.cache_stats();
-        let pending = self.map_system.pending_tiles();
-
-        let input = self.egui_state.take_egui_input(self.window.as_ref());
-        let output = self.egui_ctx.run(input, |ctx| {
-            TopBottomPanel::top("menu").show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(format!(
-                        "Zoom: {:.1} | Center: ({:.4}, {:.4})",
-                        map_zoom, map_center.0, map_center.1
-                    ));
-                    ui.separator();
-                    ui.label(format!(
-                        "Cache: {}/{} ({:.0}%)",
-                        cache_stats.tile_count,
-                        cache_stats.max_tiles,
-                        cache_stats.tile_usage_percent()
-                    ));
-                    if pending > 0 {
-                        ui.separator();
-                        ui.label(format!("Loading: {}", pending));
-                    }
-                });
-            });
-        });
     }
 
     fn draw_egui(&mut self) -> FullOutput {
@@ -254,8 +224,30 @@ impl State {
     }
 
     fn egui(&mut self, ctx: &Context) {
+        // Update egui
+        let map_center = self.map_system.center();
+        let map_zoom = self.map_system.zoom_level();
+        let cache_stats = self.map_system.cache_stats();
+        let pending = self.map_system.pending_tiles();
+
         TopBottomPanel::top("menu").show(ctx, |ui| {
-            ui.label("aiosdhfoidshifoahjfiposdf");
+            ui.horizontal(|ui| {
+                ui.label(format!(
+                    "Zoom: {:.1} | Center: ({:.4}, {:.4})",
+                    map_zoom, map_center.0, map_center.1
+                ));
+                ui.separator();
+                ui.label(format!(
+                    "Cache: {}/{} ({:.0}%)",
+                    cache_stats.tile_count,
+                    cache_stats.max_tiles,
+                    cache_stats.tile_usage_percent()
+                ));
+                if pending > 0 {
+                    ui.separator();
+                    ui.label(format!("Loading: {}", pending));
+                }
+            });
         });
     }
 
