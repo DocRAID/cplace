@@ -2,6 +2,7 @@
 // crate::state
 // crate::state::greet
 
+use log::info;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 use winit::event_loop::EventLoop;
@@ -18,6 +19,7 @@ pub fn run() -> anyhow::Result<()> {
     #[cfg(target_arch = "wasm32")]
     {
         console_log::init_with_level(log::Level::Info).unwrap_throw();
+        info!("Starting...");
     }
 
     let event_loop = EventLoop::with_user_event().build()?;

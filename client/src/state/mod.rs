@@ -1,13 +1,13 @@
-use std::sync::Arc;
 use egui::{Context, FullOutput, TopBottomPanel};
 use egui_wgpu::{Renderer, RendererOptions, ScreenDescriptor};
-use egui_winit::apply_viewport_builder_to_window;
 use log::{info, warn};
-use wgpu::{Backends, ExperimentalFeatures, Features, Instance, InstanceDescriptor, MemoryHints, SurfaceError, Trace};
+use std::sync::Arc;
+use wgpu::{Backends, ExperimentalFeatures, Features, Instance, InstanceDescriptor, MemoryHints, SurfaceError, TextureFormat, Trace};
 use winit::window::Window;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
+
 use winit::dpi::PhysicalSize;
 use winit::event::WindowEvent;
 
@@ -21,10 +21,9 @@ pub struct State {
     pub is_surface_configured: bool,
     resize_request: Option<PhysicalSize<u32>>,
     ui_renderer: Renderer,
-    egui_ctx: Context,
+    pub egui_ctx: Context,
     egui_state: egui_winit::State,
     draw_egui: bool,
-    egui_output: Option<FullOutput>,
 }
 
 impl State {
@@ -66,7 +65,7 @@ impl State {
         let texture_format = cap
             .formats
             .iter()
-            .find(|format| format.is_srgb())
+            .find(|format| **format == TextureFormat::Rgba8Unorm || **format == TextureFormat::Bgra8Unorm)
             .copied()
             .unwrap_or(cap.formats[0]);
 
@@ -81,12 +80,16 @@ impl State {
             desired_maximum_frame_latency: 2,
         };
 
-        let ui_renderer = Renderer::new(&device, texture_format, RendererOptions {
-            msaa_samples: 0,
-            depth_stencil_format: None,
-            dithering: false,
-            predictable_texture_filtering: false,
-        });
+        let ui_renderer = Renderer::new(
+            &device,
+            texture_format,
+            RendererOptions {
+                msaa_samples: 0,
+                depth_stencil_format: None,
+                dithering: false,
+                predictable_texture_filtering: false,
+            },
+        );
         let egui_ctx = Context::default();
 
         let egui_state = egui_winit::State::new(
@@ -110,7 +113,6 @@ impl State {
             egui_ctx,
             egui_state,
             draw_egui: true,
-            egui_output: None,
         })
     }
 
@@ -132,19 +134,30 @@ impl State {
     }
 
     pub fn handle_input(&mut self, event: &WindowEvent) -> bool {
-        let response = self.egui_state.on_window_event(self.window.as_ref(), &event);
+        let response = self
+            .egui_state
+            .on_window_event(self.window.as_ref(), &event);
         self.draw_egui = response.repaint;
         response.consumed
     }
 
     pub fn update(&mut self) {
+
+    }
+
+    fn draw_egui(&mut self) -> FullOutput {
         let input = self.egui_state.take_egui_input(self.window.as_ref());
-        let output = self.egui_ctx.run(input, |ctx| {
-            TopBottomPanel::top("menu").show(ctx, |ui| {
-                ui.label("aiosdhfoidshifoahjfiposdf");
-            });
+        let context = self.egui_ctx.clone();
+        let output = context.run(input, |ctx| {
+            self.egui(ctx);
         });
-        self.egui_output = Some(output);
+        output
+    }
+
+    fn egui(&mut self, ctx: &Context) {
+        TopBottomPanel::top("menu").show(ctx, |ui| {
+            ui.label("aiosdhfoidshifoahjfiposdf");
+        });
     }
 
     pub fn render(&mut self) -> Result<(), SurfaceError> {
@@ -175,6 +188,35 @@ impl State {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
         {
+            let output = self.draw_egui();
+            let FullOutput {
+                platform_output,
+                textures_delta,
+                shapes,
+                pixels_per_point,
+                .. // viewport is ignored
+            } = output;
+
+            self.egui_state
+                .handle_platform_output(self.window.as_ref(), platform_output);
+
+            for (id, delta) in textures_delta.set {
+                self.ui_renderer
+                    .update_texture(&self.device, &self.queue, id, &delta);
+            }
+            let primitives = self.egui_ctx.tessellate(shapes, pixels_per_point);
+            let descriptor = ScreenDescriptor {
+                size_in_pixels: [self.config.width, self.config.height],
+                pixels_per_point,
+            };
+            self.ui_renderer.update_buffers(
+                &self.device,
+                &self.queue,
+                &mut encoder,
+                &primitives,
+                &descriptor,
+            );
+
             let render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -196,40 +238,15 @@ impl State {
                 timestamp_writes: None,
             });
 
+            let mut render_pass = render_pass.forget_lifetime();
             if self.draw_egui {
-                let output = self.egui_output.take().unwrap();
-                let FullOutput {
-                    platform_output,
-                    textures_delta,
-                    shapes,
-                    pixels_per_point,
-                    .. // viewport is ignored
-                } = output;
-
-                self.egui_state.handle_platform_output(self.window.as_ref(), platform_output);
-
-                for (id, delta) in textures_delta.set {
-                    info!("delta id: {:?}", id);
-                    self.ui_renderer.update_texture(&self.device, &self.queue, id, &delta);
-                }
-                self.egui_ctx.fonts(|v| {});
-                let descriptor = ScreenDescriptor {
-                    size_in_pixels: [self.config.width, self.config.height],
-                    pixels_per_point,
-                };
-                let primitives = self.egui_ctx.tessellate(shapes, pixels_per_point);
-                let mut render_pass = render_pass.forget_lifetime();
-
-                self.ui_renderer.update_buffers(&self.device, &self.queue, &mut encoder, &primitives, &descriptor);
-                self.ui_renderer.render(&mut render_pass, &primitives, &descriptor);
-
-                for id in textures_delta.free {
-                    self.ui_renderer.free_texture(&id);
-                    info!("free: {:?}", id);
-                }
+                self.ui_renderer
+                    .render(&mut render_pass, &primitives, &descriptor);
+            }
+            for id in textures_delta.free {
+                self.ui_renderer.free_texture(&id);
             }
         }
-
 
         self.queue.submit(std::iter::once(encoder.finish()));
         frame.present();
