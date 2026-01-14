@@ -1,6 +1,7 @@
 //! wgpu tile renderer with texture management
 
 use bytemuck::{Pod, Zeroable};
+use log::debug;
 use wgpu::include_wgsl;
 use wgpu::util::DeviceExt;
 
@@ -218,16 +219,17 @@ impl TileRenderer {
         &'a self,
         render_pass: &mut wgpu::RenderPass<'a>,
         device: &wgpu::Device,
-        tiles: &[(TileId, (f32, f32), f32)], // (tile_id, screen_pos, size)
+        tiles: &[(TileId, (f32, f32), (f32, f32))], // (tile_id, screen_pos, (width, height))
         cache: &'a TileCache,
     ) {
         render_pass.set_pipeline(&self.render_pipeline);
         render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
-        for (tile_id, (x, y), size) in tiles {
+        for (tile_id, (x, y), (width, height)) in tiles {
             if let Some(cached) = cache.peek(tile_id) {
                 // Create vertex buffer for this tile
-                let vertices = create_tile_quad(*x, *y, *size);
+                let vertices = create_tile_quad(*x, *y, *width, *height);
+                // debug!("size is:{}, {}",*width, *height);
                 let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("Tile Vertex Buffer"),
                     contents: bytemuck::cast_slice(&vertices),
@@ -243,22 +245,22 @@ impl TileRenderer {
 }
 
 /// Create quad vertices for a tile at given screen position
-fn create_tile_quad(x: f32, y: f32, size: f32) -> [TileVertex; 4] {
+fn create_tile_quad(x: f32, y: f32, width: f32, height: f32) -> [TileVertex; 4] {
     [
         TileVertex {
             position: [x, y, 0.0],
             tex_coords: [0.0, 0.0],
         },
         TileVertex {
-            position: [x + size, y, 0.0],
+            position: [x + width, y, 0.0],
             tex_coords: [1.0, 0.0],
         },
         TileVertex {
-            position: [x + size, y + size, 0.0],
+            position: [x + width, y + height, 0.0],
             tex_coords: [1.0, 1.0],
         },
         TileVertex {
-            position: [x, y + size, 0.0],
+            position: [x, y + height, 0.0],
             tex_coords: [0.0, 1.0],
         },
     ]

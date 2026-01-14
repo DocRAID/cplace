@@ -26,6 +26,8 @@ type RequestSender = std::sync::mpsc::Sender<TileRequest>;
 
 #[cfg(target_arch = "wasm32")]
 use std::sync::{Arc, Mutex};
+use log::debug;
+
 #[cfg(target_arch = "wasm32")]
 type ResultReceiver = Arc<Mutex<Vec<TileLoadResult>>>;
 #[cfg(target_arch = "wasm32")]
@@ -85,6 +87,7 @@ impl TileLoader {
         }
 
         let url = tile_id.to_osm_url();
+        // debug!("Requesting tile {}", url);
         let request = TileRequest { tile_id, url };
 
         #[cfg(not(target_arch = "wasm32"))]

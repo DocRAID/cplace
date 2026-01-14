@@ -23,7 +23,8 @@ pub struct MapSystem {
     pub pixel_grid: PixelGrid,
 
     /// Tiles to render this frame (calculated in update)
-    render_tiles: Vec<(TileId, (f32, f32), f32)>,
+    /// id, (x, y), (width, height)
+    render_tiles: Vec<(TileId, (f32, f32), (f32, f32))>,
 }
 
 impl MapSystem {
@@ -104,7 +105,7 @@ impl MapSystem {
                     self.camera.viewport_height,
                 );
 
-                self.render_tiles.push((*tile_id, (ndc_x, ndc_y), ndc_w));
+                self.render_tiles.push((*tile_id, (ndc_x, ndc_y), (ndc_w, ndc_h)));
             }
         }
 
